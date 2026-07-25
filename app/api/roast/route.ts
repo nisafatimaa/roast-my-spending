@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
 
-// Created once when the server starts, not per request.
+// Created once when the server starts, not per request.andedeff
 const anthropic = new Anthropic();
 
 function computeTotal(expenses: string): number {
