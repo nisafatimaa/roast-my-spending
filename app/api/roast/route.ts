@@ -4,6 +4,20 @@ import { NextResponse } from "next/server";
 // Created once when the server starts, not per request.
 const anthropic = new Anthropic();
 
+function computeTotal(expenses: string): number {
+  const lines = expenses.split("\n").filter((line) => line.trim());
+
+  let total = 0;
+  for (const line of lines) {
+    const match = line.match(/\d+(\.\d+)?/); 
+    if (match) {
+      total += parseFloat(match[0]);
+    }
+  }
+
+  return total;
+}
+
 export async function POST(req: Request) {
   const { expenses } = await req.json();
 
@@ -14,7 +28,9 @@ export async function POST(req: Request) {
     );
   }
 
-  try {
+  const total = computeTotal(expenses);
+
+  async function callAndParse() {
     const message = await anthropic.messages.create({
       model: "claude-sonnet-4-6",
       max_tokens: 1024,
@@ -26,28 +42,43 @@ Respond with ONLY valid JSON in exactly this shape, no other text before or afte
 {
   "roast": "string, sarcastic grandma roast, under 80 words, plain sentences, no markdown, ends with a grumble not a question",
   "guilt_score": "number from 1 to 10, how bad these expenses are: 1 means responsible saint, 10 means financial disaster, judge by vibe and necessity not just the dollar amount",
-  "honest_tip": "string, one genuine non-sarcastic piece of advice"
+  "honest_tip": "string, one genuine non-sarcastic piece of advice",
+   "total_spent": "number, must exactly match the computed total given to you, do not alter it"
 }`,
-      messages: [{ role: "user", content: expenses }],
+      messages: [
+        {
+          role: "user",
+          content: `Expenses:\n${expenses}\n\nComputed total (already calculated correctly, do not recalculate): $${total.toFixed(2)}`,
+        },
+      ],
     });
 
-    // The reply's content is an ARRAY of blocks, not a string.
     const text = message.content
       .filter((block) => block.type === "text")
       .map((block) => block.text)
       .join("");
 
-    // NEW: the model's text is supposed to be pure JSON. Parse it.
+    return JSON.parse(text); // throws if invalid JSON, caller decides what happens next
+  }
+
+  try {
     let parsed;
     try {
-      parsed = JSON.parse(text);
+      parsed = await callAndParse(); // attempt 1
     } catch {
-      console.error("Bad JSON from model:", text);
-      return NextResponse.json(
-        { error: "Granny got confused, try again." },
-        { status: 500 },
-      );
+      console.error("First attempt gave bad JSON, retrying once...");
+      try {
+        parsed = await callAndParse(); // attempt 2
+      } catch {
+        console.error("Second attempt also failed.");
+        return NextResponse.json(
+          { error: "Granny got confused, try again." },
+          { status: 500 },
+        );
+      }
     }
+
+    console.log("Computed total:", total, "| Model echoed:", parsed.total_spent);
 
     return NextResponse.json(parsed);
   } catch (err) {
