@@ -1,7 +1,7 @@
+import { ratelimit } from "@/lib/ratelimit";
 import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
 
-// Created once when the server starts, not per request.andedeff
 const anthropic = new Anthropic();
 
 function computeTotal(expenses: string): number {
@@ -19,6 +19,15 @@ function computeTotal(expenses: string): number {
 }
 
 export async function POST(req: Request) {
+  const ip = req.headers.get("x-forwarded-for") ?? "unknown";
+ const { success } = await ratelimit.limit(ip);
+
+  if (!success) {
+    return NextResponse.json(
+      { error: "Granny needs a nap. Try again in a bit." },
+      { status: 429 },
+    );
+  }
   const { expenses } = await req.json();
 
   if (!expenses?.trim()) {
