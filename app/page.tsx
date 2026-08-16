@@ -1,7 +1,9 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
+import { toPng } from "html-to-image";
 
 type Msg = { role: "user" | "granny"; text: string };
+type CardData = { roast: string; guilt_score: number; honest_tip: string };
 
 export default function Home() {
   const [input, setInput] = useState("");
@@ -12,7 +14,9 @@ export default function Home() {
     },
   ]);
   const [loading, setLoading] = useState(false);
+  const [cardData, setCardData] = useState<CardData | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -41,11 +45,29 @@ export default function Home() {
             ? `\n\n${data.honest_tip}`
             : `\n\nGuilt-o-meter: ${data.guilt_score}/10\nGranny's real advice: ${data.honest_tip}`;
         setMessages((m) => [...m, { role: "granny", text: `${data.roast}${extra}` }]);
+
+        // Only update the shareable card for real roasts, not gibberish responses.
+        if (data.guilt_score !== -1) {
+          setCardData({
+            roast: data.roast,
+            guilt_score: data.guilt_score,
+            honest_tip: data.honest_tip,
+          });
+        }
       }
     } catch {
       setMessages((m) => [...m, { role: "granny", text: "Oh bother, something broke. Try again." }]);
     }
     setLoading(false);
+  }
+
+  async function downloadCard() {
+    if (!cardRef.current) return;
+    const dataUrl = await toPng(cardRef.current, { pixelRatio: 2 });
+    const link = document.createElement("a");
+    link.download = "granny-roast.png";
+    link.href = dataUrl;
+    link.click();
   }
 
   return (
@@ -203,6 +225,92 @@ export default function Home() {
           40% { transform: translateY(-6px); }
         }
 
+        .card-wrapper {
+          max-width: 640px;
+          width: 100%;
+          margin: 0 auto;
+          padding: 0 16px 16px;
+        }
+
+        .share-card {
+          background: #FFF9EE;
+          border: 2px solid #C97C8B;
+          border-radius: 20px;
+          padding: 22px;
+          box-shadow: 0 6px 20px rgba(92,64,51,0.12);
+        }
+
+        .share-card-header {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 10px;
+        }
+
+        .share-avatar { font-size: 24px; }
+
+        .share-title {
+          font-family: 'Caveat', cursive;
+          font-size: 22px;
+          font-weight: 700;
+          color: #C97C8B;
+        }
+
+        .share-roast {
+          font-family: 'Caveat', cursive;
+          font-size: 19px;
+          font-weight: 600;
+          color: #5C4033;
+          white-space: pre-wrap;
+          margin: 0 0 14px;
+        }
+
+        .gauge-wrap { margin-bottom: 12px; }
+
+        .gauge-track {
+          background: rgba(92,64,51,0.1);
+          border-radius: 10px;
+          height: 10px;
+          overflow: hidden;
+        }
+
+        .gauge-fill {
+          height: 100%;
+          background: linear-gradient(90deg, #8A9B6E, #E8B84B, #C97C8B);
+          transition: width 0.4s ease;
+        }
+
+        .gauge-label {
+          font-size: 12px;
+          color: #5C4033;
+          opacity: 0.8;
+        }
+
+        .share-tip {
+          font-family: 'Nunito', sans-serif;
+          font-size: 13px;
+          color: #5C4033;
+          background: rgba(138,155,110,0.12);
+          border-radius: 10px;
+          padding: 8px 12px;
+          margin: 0;
+        }
+
+        .download-btn {
+          margin-top: 10px;
+          width: 100%;
+          background: #E8B84B;
+          color: #5C4033;
+          border: none;
+          border-radius: 14px;
+          padding: 10px;
+          font-family: 'Nunito', sans-serif;
+          font-weight: 700;
+          cursor: pointer;
+        }
+
+        .download-btn:hover { opacity: 0.9; }
+
         .input-bar {
           display: flex;
           gap: 10px;
@@ -281,6 +389,31 @@ export default function Home() {
         )}
         <div ref={bottomRef} />
       </div>
+
+      {cardData && (
+        <div className="card-wrapper">
+          <div className="share-card" ref={cardRef}>
+            <div className="share-card-header">
+              <span className="share-avatar">👵</span>
+              <span className="share-title">Granny's Verdict</span>
+            </div>
+            <p className="share-roast">{cardData.roast}</p>
+            <div className="gauge-wrap">
+              <div className="gauge-track">
+                <div
+                  className="gauge-fill"
+                  style={{ width: `${cardData.guilt_score * 10}%` }}
+                />
+              </div>
+              <span className="gauge-label">Guilt-o-meter: {cardData.guilt_score}/10</span>
+            </div>
+            <p className="share-tip">💡 {cardData.honest_tip}</p>
+          </div>
+          <button className="download-btn" onClick={downloadCard}>
+            Download as image
+          </button>
+        </div>
+      )}
 
       <div className="input-bar">
         <textarea
